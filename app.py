@@ -6,7 +6,6 @@ import os
 import io
 from datetime import datetime
 
-# ReportLab
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
 from reportlab.lib import colors
@@ -14,16 +13,24 @@ from reportlab.lib.styles import getSampleStyleSheet
 
 app = Flask(__name__)
 
+# Initialize model as None
 model = None
 
-# ---------------- LOAD MODEL ----------------
 def load_model():
     global model
     if os.path.exists("model.pkl"):
         model = joblib.load("model.pkl")
+        print("✅ Model loaded from model.pkl")
         return True
-    return False
+    else:
+        print("❌ model.pkl not found! Current directory:", os.getcwd())
+        print("Available files:", os.listdir("."))
+        return False
 
+# LOAD MODEL IMMEDIATELY - THIS IS CRITICAL FOR GUNICORN
+load_model()
+
+# Rest of your routes continue here...
 # ---------------- HOME ----------------
 @app.route("/")
 def index():
@@ -234,6 +241,7 @@ def train_model_if_needed():
         load_model()
 # ---------------- RUN ----------------
 if __name__ == "__main__":
+    
     if not load_model():
         print("⚠️ Model not found! Train first.")
     app.run(host="0.0.0.0", port=5000)
