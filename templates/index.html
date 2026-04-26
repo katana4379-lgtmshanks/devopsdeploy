@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Smart Study Timetable</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="/static/script.js" defer></script>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📚 Smart Study Timetable</h1>
+            <p>AI-ML powered planner</p>
+        </div>
+        
+        <div id="modelStatus"></div>
+
+        <div class="form-section">
+            <div class="form-header">
+                <h2>Subjects</h2>
+            </div>
+            
+            <form id="form">
+                <div id="subjects"></div>
+                
+                <button type="button" class="btn btn-primary" onclick="addSubject()">
+                    + Add
+                </button>
+                
+                <div class="form-actions">
+                    <button id="genBtn" type="submit" class="btn btn-success">
+                        Generate
+                    </button>
+                    <button type="button" class="btn btn-secondary" onclick="resetAll()">
+                        Reset
+                    </button>
+                </div>
+            </form>
+        </div>
+   
+        <div id="results" style="display:none;">
+            <h2>📅 Timetable</h2>
+            <div id="timetable"></div>
+            
+            <h2>📊 Analysis</h2>
+            <div id="analysis"></div>
+            
+            <h2>📌 Summary</h2>
+            <div id="summary"></div>
+            
+            <button class="btn btn-primary" onclick="downloadPDF()">
+                Download PDF
+            </button>
+        </div>
+    </div>
+
+    <script>
+        let resultsData = null;
+
+        /* MODEL CHECK */
+        async function checkModel(){
+            let res = await fetch("/check_model");
+            let data = await res.json();
+            document.getElementById("modelStatus").innerHTML =
+                data.loaded
+                ? "<p class='ok'>✅ Model Loaded</p>"
+                : "<p class='err'>❌ Model Missing</p>";
+            
+            if(data.loaded){
+                document.getElementById("genBtn").disabled = false;
+            }
+        }
+
+        /* ADD SUBJECT */
+        function addSubject(){
+            let div = document.createElement("div");
+            div.className = "card";
+            div.innerHTML = `
+                <div class="form-group">
+                    <label>📘 Subject Name</label>
+                    <input class="name" type="text" placeholder="e.g. Machine Learning">
+                </div>
+                <div class="form-group">
+                    <label>⏳ Study Hours</label>
+                    <input class="hours" type="number" placeholder="(0-40)" min="0" max="40">
+                </div>
+                <div class="form-group">
+                    <label>📊 Attendance</label>
+                    <input class="attendance" type="number" placeholder=" (0-100%)" min="0" max="100">
+                </div>
+                <div class="form-group">
+                    <label> 📚 Study material</label>
+                    <select class="access">
+                        <option value="0">Low</option>
+                        <option value="1">Medium</option>
+                        <option value="2">High</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>😴 Sleep</label>
+                    <input class="sleep" type="number" placeholder=" (3-8)" min="3" max="8">
+                </div>
+                <div class="form-group">
+                    <label>🎯Previous Score</label>
+                    <input class="previous" type="number" placeholder="(0-100)" min="0" max="100">
+                </div>
+                <div class="form-group">
+                    <label>👨‍🏫 Tutoring</label>
+                    <input class="tutoring" type="number" placeholder="per week">
+                </div>
+            `;
+            document.getElementById("subjects").appendChild(div);
+        }
+
+        /* COLLECT DATA */
+        function collect(){
+            let cards = document.querySelectorAll(".card");
+            let data = [];
+            let isValid = true;
+
+            cards.forEach((c, index) => {
+                let name = c.querySelector(".name").value.trim();
+                let hours = c.querySelector(".hours").value;
+                let attendance = c.querySelector(".attendance").value;
+                let access = c.querySelector(".access").value;
+                let sleep = c.querySelector(".sleep").value;
+                let previous = c.querySelector(".previous").value;
+                let tutoring = c.querySelector(".tutoring").value;
+
+                if(!name || !hours || !attendance || !sleep || !previous || !tutoring){
+                    alert(`⚠️ Please fill all fields in Subject ${index + 1}`);
+                    isValid = false;
+                    return;
+                }
+
+                data.push({
+                    name, hours, attendance, access, sleep, previous, tutoring
+                });
+            });
+            return isValid ? data : null;
+        }
+
+        /* FORM SUBMIT */
+        document.getElementById("form").addEventListener("submit", async (e) => {
+            e.preventDefault();
+            let subjects = collect();
+            
+            if(!subjects || subjects.length === 0){
+                alert("Enter data first!");
+                return;
+            }
+
+            let res = await fetch("/predict", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({subjects})
+            });
+
+            let data = await res.json();
+            resultsData = data;
+            render(data);
+        });
+
+        /* RENDER RESULTS */
+        function render(data){
+            document.getElementById("results").style.display = "block";
+            
+            document.getElementById("timetable").innerHTML =
+                data.timetable.map(t => 
+                    `<p>${t.slot} → ${t.subject} (${t.score})</p>`
+                ).join("");
+
+            document.getElementById("analysis").innerHTML =
+                data.results.map(r => `
+                    <div style="border-left:4px solid ${r.color};padding:10px;margin:10px">
+                        <b>${r.name}</b> - ${r.score}
+                        <p>${r.status}</p>
+                        <small>${r.advice}</small>
+                    </div>
+                `).join("");
+
+            document.getElementById("summary").innerHTML = `
+                <h3>Average: ${data.avg_score}</h3>
+                <h3>Total Subjects: ${data.total_subjects}</h3>
+            `;
+        }
+
+        /* RESET */
+        function resetAll(){
+            document.getElementById("subjects").innerHTML = "";
+            document.getElementById("results").style.display = "none";
+        }
+
+        /* DOWNLOAD PDF */
+        function downloadPDF(){
+            if(!resultsData){
+                alert("Generate timetable first!");
+                return;
+            }
+            fetch("/download_pdf", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(resultsData)
+            })
+            .then(res => res.blob())
+            .then(blob => {
+                let url = URL.createObjectURL(blob);
+                let a = document.createElement("a");
+                a.href = url;
+                a.download = "timetable.pdf";
+                a.click();
+            });
+        }
+
+        // Initialize
+        addSubject();
+        checkModel();
+    </script>
+</body>
+</html>
