@@ -197,7 +197,41 @@ def download_pdf():
         download_name="timetable.pdf",
         mimetype="application/pdf"
     )
+def train_model_if_needed():
+    global model
+    if not os.path.exists("model.pkl"):
+        print("🚀 Training model on server...")
 
+        df = pd.read_csv("data.csv", sep="\t")
+        df.columns = df.columns.str.strip().str.replace(" ", "_")
+
+        df["Access_to_Resources"] = df["Access_to_Resources"].map({
+            "Low": 0,
+            "Medium": 1,
+            "High": 2
+        })
+
+        X = df[[
+            "Hours_Studied",
+            "Attendance",
+            "Access_to_Resources",
+            "Sleep_Hours",
+            "Previous_Scores",
+            "Tutoring_Sessions"
+        ]]
+
+        y = df["Exam_Score"]
+
+        from sklearn.ensemble import RandomForestRegressor
+
+        model = RandomForestRegressor(n_estimators=200, random_state=42)
+        model.fit(X, y)
+
+        joblib.dump(model, "model.pkl")
+        print("✅ Model trained and saved!")
+
+    else:
+        load_model()
 # ---------------- RUN ----------------
 if __name__ == "__main__":
     if not load_model():
